@@ -31,12 +31,32 @@ Building the project produces a portable **`.dacpac`** that can be deployed to S
 
 ---
 
-### 2) Clone this repository
+### 2) Get the source code
+
+You can clone the repository in two ways:
+
+#### Option A — Using Visual Studio (no command line required)
+
+1. Open **Visual Studio**.  
+2. On the start window, click **Clone a repository**.  
+3. In the “Repository location” box, paste:
+
+   ```
+   https://github.com/AmateurRepeaterDirectory/ARD-Database.git
+   ```
+
+4. Choose a local path on your computer where you want the project saved.  
+5. Click **Clone**. Visual Studio will fetch the repo and open the solution.
+
+---
+
+#### Option B — Using Git from the command line
 
 ```bash
 git clone https://github.com/AmateurRepeaterDirectory/ARD-Database.git
 cd ARD-Database
 ```
+
 
 ---
 

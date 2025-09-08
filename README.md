@@ -7,7 +7,7 @@
 <h3>Free, Verified, Community-Maintained</h3>
 
 This repository contains the **SQL Server database schema** for the  
-[Amateur Repeater Directory (ARD)](https://amateurrepeaterdirectory.org) project.
+[Amateur Repeater Directory](https://amateurrepeaterdirectory.org) project.
 
 It is published as a **Visual Studio SQL Server Database Project**.  
 Each table, view, and stored procedure is its own `.sql` file for easy browsing and version control.  

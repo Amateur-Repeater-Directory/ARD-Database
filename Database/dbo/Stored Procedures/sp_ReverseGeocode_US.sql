@@ -1,82 +1,99 @@
-﻿CREATE   PROCEDURE [dbo].[sp_ReverseGeocode_US]
-    @Lat float,
-    @Lon float
+﻿CREATE   PROCEDURE dbo.sp_ReverseGeocode_US
+  @Lat float, @Lon float
 AS
 BEGIN
-    SET NOCOUNT ON;
+  SET NOCOUNT ON;
+  DECLARE @pt geography = geography::Point(@Lat, @Lon, 4326);
 
-    DECLARE @pt geography = geography::Point(@Lat, @Lon, 4326);
+  -- optional hits
+  CREATE TABLE #place_hit (PlaceName nvarchar(100), PlaceStateId varchar(2), HitType varchar(10));
+  CREATE TABLE #state_hit (PolyStateId varchar(2), StateName nvarchar(100));
+  CREATE TABLE #county_hit (PolyCounty nvarchar(100));
 
-    ----------------------------------------------------------------------
-    -- 1) Nearest city from Demographics (with or without Geo column)
-    ----------------------------------------------------------------------
-    ;WITH nearest_city AS (
-        -- Branch to use persisted Geo if it exists for speed
-        SELECT TOP (1)
-            d.City,
-            d.County,
-            d.StateId,
-            d.Population,
-            d.Incorporated,
-            -- distance from query point to city point
-            CASE 
-              WHEN COL_LENGTH('dbo.Demographics','Geo') IS NOT NULL 
-              THEN @pt.STDistance(d.Geo)
-              ELSE @pt.STDistance(geography::Point(d.Latitude, d.Longitude, 4326))
-            END AS DistM
-        FROM dbo.Demographics AS d
-        ORDER BY 
-            CASE 
-              WHEN COL_LENGTH('dbo.Demographics','Geo') IS NOT NULL 
-              THEN @pt.STDistance(d.Geo)
-              ELSE @pt.STDistance(geography::Point(d.Latitude, d.Longitude, 4326))
-            END
-    ),
+  -- Try place polygons (table assumed: dbo.tl_2024_us_place(NAME, STUSPS, geog geography))
+  IF OBJECT_ID('dbo.tl_2024_us_place','U') IS NOT NULL
+     AND COL_LENGTH('dbo.tl_2024_us_place','geog')   IS NOT NULL
+     AND COL_LENGTH('dbo.tl_2024_us_place','NAME')   IS NOT NULL
+     AND COL_LENGTH('dbo.tl_2024_us_place','STUSPS') IS NOT NULL
+  BEGIN
+    -- inside first
+    EXEC sp_executesql
+      N'INSERT TOP (1) INTO #place_hit(PlaceName,PlaceStateId,HitType)
+        SELECT p.NAME, p.STUSPS, ''inside''
+        FROM dbo.tl_2024_us_place p
+        WHERE p.geog.STIntersects(@pt)=1;',
+      N'@pt geography', @pt=@pt;
 
-    ----------------------------------------------------------------------
-    -- 2) Optional polygon hits (exact state/county if TIGER polygons exist)
-    ----------------------------------------------------------------------
-    state_hit AS (
-        SELECT TOP (1)
-            s.STUSPS     AS PolyStateId,
-            s.NAME       AS StateName
-        FROM dbo.tl_2024_us_state AS s
-        WHERE COL_LENGTH('dbo.tl_2024_us_state','geog') IS NOT NULL
-          AND s.geog.STIntersects(@pt) = 1
-    ),
-    county_hit AS (
-        SELECT TOP (1)
-            c.NAME       AS PolyCounty
-        FROM dbo.tl_2024_us_county AS c
-        WHERE COL_LENGTH('dbo.tl_2024_us_county','geog') IS NOT NULL
-          AND c.geog.STIntersects(@pt) = 1
-    )
+    -- else nearest boundary
+    IF NOT EXISTS(SELECT 1 FROM #place_hit)
+    BEGIN
+      EXEC sp_executesql
+        N'INSERT TOP (1) INTO #place_hit(PlaceName,PlaceStateId,HitType)
+          SELECT p.NAME, p.STUSPS, ''nearest''
+          FROM dbo.tl_2024_us_place p
+          ORDER BY p.geog.STDistance(@pt);',
+        N'@pt geography', @pt=@pt;
+    END
+  END
 
-    ----------------------------------------------------------------------
-    -- 3) Final select with graceful fallback when polygons aren't present
-    ----------------------------------------------------------------------
-    SELECT
-        @Lat  AS QueryLat,
-        @Lon  AS QueryLon,
+  -- optional state polygon (dbo.tl_2024_us_state(STUSPS, NAME, geog))
+  IF OBJECT_ID('dbo.tl_2024_us_state','U') IS NOT NULL
+     AND COL_LENGTH('dbo.tl_2024_us_state','geog') IS NOT NULL
+  BEGIN
+    EXEC sp_executesql
+      N'INSERT TOP (1) INTO #state_hit(PolyStateId,StateName)
+        SELECT s.STUSPS, s.NAME FROM dbo.tl_2024_us_state s
+        WHERE s.geog.STIntersects(@pt)=1;',
+      N'@pt geography', @pt=@pt;
+  END
 
-        -- Prefer polygon-derived state/county when available
-        COALESCE(sh.PolyStateId, nc.StateId)      AS StateId,
-        sh.StateName                               AS StateName,      -- NULL if no polygons table
-        COALESCE(ch.PolyCounty,  nc.County)       AS County,
+  -- optional county polygon (dbo.tl_2024_us_county(NAME, geog))
+  IF OBJECT_ID('dbo.tl_2024_us_county','U') IS NOT NULL
+     AND COL_LENGTH('dbo.tl_2024_us_county','geog') IS NOT NULL
+  BEGIN
+    EXEC sp_executesql
+      N'INSERT TOP (1) INTO #county_hit(PolyCounty)
+        SELECT c.NAME FROM dbo.tl_2024_us_county c
+        WHERE c.geog.STIntersects(@pt)=1;',
+      N'@pt geography', @pt=@pt;
+  END
 
-        nc.City                                    AS NearestCity,
-        nc.Population                              AS NearestCityPopulation,
-        nc.Incorporated                            AS NearestCityIncorporated,
-
-        nc.DistM                                   AS DistanceMetersToCity,
-        nc.DistM / 1609.344                        AS DistanceMilesToCity,
-
-        CASE 
-          WHEN sh.PolyStateId IS NOT NULL AND ch.PolyCounty IS NOT NULL THEN 'polygon'
-          WHEN sh.PolyStateId IS NOT NULL OR  ch.PolyCounty IS NOT NULL THEN 'mixed'
-          ELSE 'nearest_city'
-        END AS SourceForStateCounty
-    FROM nearest_city nc
-    LEFT JOIN state_hit  sh ON 1 = 1
-    LEFT JOIN county_hit ch ON 1 = 1;
+  ;WITH nearest_city AS (
+    SELECT TOP (1)
+      d.Id, d.City, d.County, d.StateId, d.Population, d.Incorporated,
+      @pt.STDistance(d.Geo) AS DistM
+    FROM dbo.Demographics d
+    ORDER BY @pt.STDistance(d.Geo)
+  ),
+  polygon_city AS (
+    -- try to match polygon name/state to your Demographics row(s)
+    SELECT TOP (1)
+      d.Id, d.City, d.County, d.StateId, d.Population, d.Incorporated,
+      @pt.STDistance(d.Geo) AS DistM
+    FROM #place_hit ph
+    JOIN dbo.Demographics d
+      ON UPPER(LTRIM(RTRIM(d.StateId))) = UPPER(ph.PlaceStateId)
+     AND UPPER(LTRIM(RTRIM(d.City)))    = UPPER(LTRIM(RTRIM(ph.PlaceName)))
+    ORDER BY d.Population DESC, @pt.STDistance(d.Geo)
+  )
+  SELECT
+    @Lat AS QueryLat, @Lon AS QueryLon,
+    COALESCE(sh.PolyStateId, pc.StateId, nc.StateId) AS StateId,
+    sh.StateName                                      AS StateName,
+    COALESCE(ch.PolyCounty,  pc.County,  nc.County)   AS County,
+    COALESCE(pc.City, nc.City)                        AS City,
+    COALESCE(pc.Population, nc.Population)            AS Population,
+    COALESCE(pc.Incorporated, nc.Incorporated)        AS Incorporated,
+    COALESCE(pc.DistM, nc.DistM)                      AS DistanceMetersToCity,
+    COALESCE(pc.DistM, nc.DistM) / 1609.344           AS DistanceMilesToCity,
+    CASE
+      WHEN EXISTS(SELECT 1 FROM #place_hit) AND EXISTS(SELECT 1 FROM polygon_city) THEN 'place_polygon'
+      WHEN EXISTS(SELECT 1 FROM #place_hit) THEN 'place_polygon_unmatched_fallback'
+      WHEN sh.PolyStateId IS NOT NULL OR ch.PolyCounty IS NOT NULL THEN 'mixed'
+      ELSE 'nearest_city'
+    END AS Source
+  FROM nearest_city nc
+  OUTER APPLY (SELECT TOP 1 * FROM polygon_city) pc
+  LEFT JOIN #state_hit sh ON 1=1
+  LEFT JOIN #county_hit ch ON 1=1;
 END

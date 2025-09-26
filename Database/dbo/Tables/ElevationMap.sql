@@ -9,3 +9,13 @@
     CONSTRAINT [FK_ElevationMap_Repeater] FOREIGN KEY ([RepeaterId]) REFERENCES [dbo].[Repeater] ([RepeaterId]) ON DELETE CASCADE
 );
 
+
+GO
+CREATE UNIQUE NONCLUSTERED INDEX [UX_ElevationMap_Location_Account_Repeater]
+    ON [dbo].[ElevationMap]([LocationId] ASC, [AccountId] ASC, [RepeaterId] ASC);
+
+
+GO
+CREATE NONCLUSTERED INDEX [IX_ElevationMap_Location_Account]
+    ON [dbo].[ElevationMap]([LocationId] ASC, [AccountId] ASC);
+

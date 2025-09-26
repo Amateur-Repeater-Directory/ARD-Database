@@ -16,15 +16,11 @@
 );
 
 
+
+
 GO
 CREATE SPATIAL INDEX [SIDX_Demographics_Geo]
     ON [dbo].[Demographics] ([Geo]);
 
 
 GO
-CREATE SPATIAL INDEX [SIX_Demographics_Geo]
-    ON [dbo].[Demographics] ([Geo])
-    WITH  (
-            CELLS_PER_OBJECT = 16
-          );
-

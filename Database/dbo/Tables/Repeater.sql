@@ -30,8 +30,11 @@
     [AboveGroundLevel]          DECIMAL (7, 3)   NULL,
     [IsAboveGroundLevelPrecise] BIT              CONSTRAINT [DF_Repeater_IsAboveGroundLevelPrecise] DEFAULT ((0)) NOT NULL,
     [Geo]                       AS               ([geography]::Point([Latitude],[Longitude],(4326))) PERSISTED,
+    [Modes]                     NVARCHAR (100)   NULL,
     CONSTRAINT [PK_Repeater] PRIMARY KEY CLUSTERED ([RepeaterId] ASC)
 );
+
+
 
 
 
@@ -49,4 +52,9 @@ CREATE NONCLUSTERED INDEX [IX_Repeater_LatLon]
 GO
 CREATE SPATIAL INDEX [SIDX_Repeater_Geo]
     ON [dbo].[Repeater] ([Geo]);
+
+
+GO
+CREATE UNIQUE NONCLUSTERED INDEX [UQ_Repeater_Physical]
+    ON [dbo].[Repeater]([Callsign] ASC, [State] ASC, [NearestCity] ASC, [OutputFrequency] ASC, [InputFrequency] ASC, [Offset] ASC, [OffsetSign] ASC);
 

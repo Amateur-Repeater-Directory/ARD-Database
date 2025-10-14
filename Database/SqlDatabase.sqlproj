@@ -63,6 +63,7 @@
     <Folder Include="dbo\Views\" />
     <Folder Include="dbo\Stored Procedures\" />
     <Folder Include="dbo\User Defined Types\" />
+    <Folder Include="dbo\Functions\" />
   </ItemGroup>
   <ItemGroup>
     <Build Include="dbo\Tables\__EFMigrationsHistory.sql" />
@@ -98,5 +99,7 @@
     <Build Include="dbo\Stored Procedures\sp_DemographicsNearestCities_orig.sql" />
     <Build Include="dbo\Stored Procedures\sp_DemographicsNearestCities_1.sql" />
     <Build Include="dbo\Stored Procedures\HomeLocation_Delete.sql" />
+    <Build Include="dbo\Functions\RandomizeLatLon.sql" />
+    <Build Include="dbo\Stored Procedures\usp_GenerateRepeaterInsertScript.sql" />
   </ItemGroup>
 </Project>
